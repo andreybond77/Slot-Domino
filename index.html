@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🎰 Слот-домино</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Канвас для частиц -->
+  <canvas id="fxCanvas"></canvas>
+
+  <!-- Вспышка экрана -->
+  <div id="flash" class="flash"></div>
+
+  <div class="machine" id="machine">
+    <!-- Бегущие огоньки по периметру -->
+    <div class="marquee" aria-hidden="true">
+      <span></span><span></span><span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span><span></span><span></span>
+    </div>
+
+    <h1>🎲 СЛОТ-ДОМИНО 🎲</h1>
+
+    <!-- 1. ИГРОВОЕ ПОЛЕ -->
+    <div class="reels" id="reels">
+      <div class="reel" id="reel0"></div>
+      <div class="spark" id="spark0"></div>
+      <div class="reel" id="reel1"></div>
+      <div class="spark" id="spark1"></div>
+      <div class="reel" id="reel2"></div>
+    </div>
+
+    <!-- 2. ИНФО-ПАНЕЛЬ -->
+    <div class="info">
+      <span>💰 Баланс: <b class="balance" id="balance">100</b></span>
+      <span>🎯 Ставка: <b id="betDisplay">10</b></span>
+    </div>
+
+    <!-- 3. РЯД УПРАВЛЕНИЯ: ПЕРЕСЧЁТ / ДОПЫ / КРУТИТЬ -->
+    <div class="game-row">
+      <!-- Пересчёт -->
+      <button class="recalc-btn" id="recalcBtn" title="Пересчитать выигрыш по текущим костяшкам">
+        <span class="recalc-icon">🔄</span>
+        <span class="recalc-text">ПЕРЕСЧЁТ</span>
+      </button>
+
+      <!-- Допы: блокировки + перевороты -->
+      <div class="bonus-block">
+        <div class="bonus-block-label">
+          🔒 <b id="locksLeft">2/2</b> <span class="cost">(5 💰)</span>
+        </div>
+        <div class="control-row locks">
+          <button class="lock-btn" data-reel="0" title="Заблокировать барабан 1">🔓</button>
+          <button class="lock-btn" data-reel="1" title="Заблокировать барабан 2">🔓</button>
+          <button class="lock-btn" data-reel="2" title="Заблокировать барабан 3">🔓</button>
+        </div>
+        <div class="control-row flips">
+          <button class="flip-btn" data-reel="0" title="Перевернуть костяшку">🔄</button>
+          <button class="flip-btn" data-reel="1" title="Перевернуть костяшку">🔄</button>
+          <button class="flip-btn" data-reel="2" title="Перевернуть костяшку">🔄</button>
+        </div>
+      </div>
+
+      <!-- Крутить -->
+      <button class="spin-btn" id="spinBtn">КРУТИТЬ</button>
+    </div>
+
+    <!-- 4. КНОПКИ СТАВОК -->
+    <div class="quick-bets">
+      <button data-bet="1">1</button>
+      <button data-bet="5">5</button>
+      <button data-bet="10">10</button>
+      <button data-bet="25">25</button>
+      <button data-bet="50">50</button>
+      <button data-bet="all">MAX</button>
+    </div>
+
+    <!-- 5. ПАНЕЛЬ РЕЗУЛЬТАТА -->
+    <div class="result-panel" id="resultPanel">
+      Нажмите «КРУТИТЬ», чтобы начать!
+    </div>
+
+    <!-- Справка -->
+    <div class="payouts">
+      <b>💎 Три разных дубля</b> ([z|z][y|y][x|x]) = <b>x5</b><br>
+      <b>🔷 Дубль в центре</b> ([z|x][x|x][x|y]) = <b>x4</b><br>
+      <b>🔶 Дубли по краям</b> ([z|z][z|y][y|y]) = <b>x4</b><br>
+      <b>🎉 Линия из 3</b> (все стыкуются) = <b>x3</b><br>
+      <b>✨ Линия из 2</b> (две стыкуются) = <b>x2</b><br>
+      <span class="hint">Костяшки в спине не повторяются: 3 разные из 28.</span>
+    </div>
+  </div>
+
+  <!-- Кнопки управления звуком -->
+  <div id="audioControls">
+    <button id="muteFxBtn" title="Звуковые эффекты">🔊</button>
+    <button id="muteMusicBtn" title="Фоновая музыка">🎵</button>
+  </div>
+
+  <div class="game-over" id="gameOver">
+    <div class="game-over-box">
+      <h2>💀 ИГРА ОКОНЧЕНА</h2>
+      <p>Вы остались без монет!</p>
+      <button id="restartBtn">Начать заново</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
