@@ -2,7 +2,7 @@
 
 Браузерный слот-автомат на 3 барабанах с костяшками домино. Крутите, собирайте линии, используйте блокировки и перевороты, чтобы увеличить выигрыш.
 
-**[🎮 Играть в демо](https://andreybond77.github.io/slot-domino/)** · **[📂 Исходный код](https://github.com/andreybond77/slot-domino)**
+**[🎮 Играть в демо](https://andreybond77.github.io/Slot-Domino /)** · **[📂 Исходный код](https://github.com/andreybond77/slot-domino)**
 
 ---
 
