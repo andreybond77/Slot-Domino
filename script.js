@@ -8,10 +8,6 @@
 const START_BALANCE   = 100;
 const DEFAULT_BET     = 10;
 
-const LOCK_COST       = 5;
-const LOCKS_PER_ROUND = 2;
-const MAX_LOCKS       = 2;
-
 const MULT_THREE_DIFFERENT_DOUBLES = 5;
 const MULT_CENTER_DOUBLE           = 4;
 const MULT_EDGE_DOUBLES            = 4;
@@ -21,7 +17,7 @@ const MULT_PAIR_LINE               = 2;
 const SPIN_TICK_MS    = 80;
 const STOP_DELAY_MS   = 400;
 const STOP_STAGGER_MS = 300;
-const FLIP_ANIM_MS    = 300;
+const FLIP_ANIM_MS    = 400;
 const BALANCE_TICK_MS = 400;
 
 // ============================================
@@ -207,10 +203,6 @@ const Sound = (() => {
     },
     hover() {
       tone({ freq: 1600, type: "sine", duration: 0.03, volume: 0.15 });
-    },
-    lock() {
-      tone({ freq: 320, type: "triangle", duration: 0.12, volume: 0.7 });
-      tone({ freq: 180, type: "sine", duration: 0.18, volume: 0.6, delay: 0.05 });
     },
     flip() {
       tone({ freq: 900, type: "sine", duration: 0.18, volume: 0.6, slideTo: 300 });
@@ -481,24 +473,42 @@ const FX = (() => {
   };
 })();
 
-// ---- Мьют-кнопки ----
-(function setupAudioButtons() {
-  const fxBtn = document.getElementById("muteFxBtn");
-  const musicBtn = document.getElementById("muteMusicBtn");
+// ---- Единая кнопка звука ----
+// Режимы: 0 — всё включено, 1 — эффекты выкл., 2 — всё выкл.
+(function setupAudioButton() {
+  const btn = document.getElementById("soundBtn");
+  let mode = 0;
 
-  fxBtn.addEventListener("click", () => {
+  function applyMode() {
+    const fxShouldBeMuted = mode >= 1;
+    const musicShouldBeMuted = mode >= 2;
+
+    if (Sound.isFxMuted() !== fxShouldBeMuted) Sound.toggleFx();
+    if (Sound.isMusicMuted() !== musicShouldBeMuted) Sound.toggleMusic();
+
+    if (mode === 0) {
+      btn.textContent = "🔊";
+      btn.title = "Звук: всё включено";
+      btn.classList.remove("off");
+    } else if (mode === 1) {
+      btn.textContent = "🔈";
+      btn.title = "Звук: эффекты выключены, музыка включена";
+      btn.classList.add("off");
+    } else {
+      btn.textContent = "🔇";
+      btn.title = "Звук: всё выключено";
+      btn.classList.add("off");
+    }
+  }
+
+  btn.addEventListener("click", () => {
     Sound.unlock();
-    const m = Sound.toggleFx();
-    fxBtn.textContent = m ? "🔇" : "🔊";
-    fxBtn.classList.toggle("off", m);
-    if (!m) Sound.click();
+    mode = (mode + 1) % 3;
+    applyMode();
+    if (mode === 0) Sound.click();
   });
-  musicBtn.addEventListener("click", () => {
-    Sound.unlock();
-    const m = Sound.toggleMusic();
-    musicBtn.classList.toggle("off", m);
-    if (!m) Sound.click();
-  });
+
+  applyMode();
 })();
 
 // ---- Разблокировка аудио + запуск музыки ----
@@ -536,19 +546,18 @@ const DOMINO_SET = buildDominoSet();
 let balance      = START_BALANCE;
 let currentBet   = DEFAULT_BET;
 let spinning     = false;
-let locksLeft    = LOCKS_PER_ROUND;
-let paidLine     = null;
 
 let betLocked        = false;
 let recalcAvailable  = false;
 let currentSpinWin   = 0;
 
-let paidLockedPair = null;
+// Защита от повторного клика во время переворота
+let flippingReels = [false, false, false];
 
 let reels = [
-  { domino: null, locked: false },
-  { domino: null, locked: false },
-  { domino: null, locked: false },
+  { domino: null },
+  { domino: null },
+  { domino: null },
 ];
 
 // ============================================
@@ -572,10 +581,7 @@ const recalcBtn    = document.getElementById("recalcBtn");
 const resultPanel  = document.getElementById("resultPanel");
 const gameOverEl   = document.getElementById("gameOver");
 const restartBtn   = document.getElementById("restartBtn");
-const locksLeftEl  = document.getElementById("locksLeft");
 const quickBetBtns = document.querySelectorAll(".quick-bets button");
-const lockBtns     = document.querySelectorAll(".lock-btn");
-const flipBtns     = document.querySelectorAll(".flip-btn");
 
 // ============================================
 // УТИЛИТЫ
@@ -586,38 +592,6 @@ function pickDomino() {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function getLockedIndices() {
-  const arr = [];
-  reels.forEach((r, i) => { if (r.locked) arr.push(i); });
-  return arr;
-}
-
-function getLockedAdjacentPair() {
-  const locked = getLockedIndices();
-  if (locked.length !== 2) return null;
-  const [a, b] = locked;
-  if (b - a === 1) return [a, b];
-  return null;
-}
-
-function humanPair(positions) {
-  return positions.map(i => i + 1).join(" и ");
-}
-
-function sameDominoes(a, b) {
-  if (!a || !b) return false;
-  return a.top === b.top && a.bot === b.bot;
-}
-
-function paidLockedPairStillValid() {
-  if (!paidLockedPair) return false;
-  const [p0, p1] = paidLockedPair.positions;
-  const d0 = reels[p0].domino;
-  const d1 = reels[p1].domino;
-  return sameDominoes(d0, paidLockedPair.dominoes[0])
-      && sameDominoes(d1, paidLockedPair.dominoes[1]);
 }
 
 // ============================================
@@ -651,29 +625,29 @@ function animateBalanceTo(target) {
 // ============================================
 // РЕНДЕР КОСТЯШКИ
 // ============================================
+function createHalf(n) {
+  const half = document.createElement("div");
+  half.className = `half pips-${n}`;
+  for (let i = 0; i < n; i++) {
+    const pip = document.createElement("div");
+    pip.className = "pip";
+    half.appendChild(pip);
+  }
+  return half;
+}
+
 function createDominoElement(d) {
   const domino = document.createElement("div");
   domino.className = "domino";
-
-  const halfTop = document.createElement("div");
-  halfTop.className = `half pips-${d.top}`;
-  for (let i = 0; i < d.top; i++) {
-    const pip = document.createElement("div");
-    pip.className = "pip";
-    halfTop.appendChild(pip);
-  }
-
-  const halfBot = document.createElement("div");
-  halfBot.className = `half pips-${d.bot}`;
-  for (let i = 0; i < d.bot; i++) {
-    const pip = document.createElement("div");
-    pip.className = "pip";
-    halfBot.appendChild(pip);
-  }
-
-  domino.appendChild(halfTop);
-  domino.appendChild(halfBot);
+  domino.appendChild(createHalf(d.top));
+  domino.appendChild(createHalf(d.bot));
   return domino;
+}
+
+function updateDominoContent(dominoEl, d) {
+  dominoEl.innerHTML = "";
+  dominoEl.appendChild(createHalf(d.top));
+  dominoEl.appendChild(createHalf(d.bot));
 }
 
 function renderReel(index, d) {
@@ -707,50 +681,14 @@ function updateBetUI() {
 }
 
 function updateBonusUI() {
-  locksLeftEl.textContent = `${locksLeft}/${LOCKS_PER_ROUND}`;
-
-  const lockedCount = reels.filter(r => r.locked).length;
-
-  lockBtns.forEach(btn => {
-    const i = Number(btn.dataset.reel);
-    const r = reels[i];
-    btn.classList.remove("active", "no-money");
-
-    if (r.locked) {
-      // Кнопка активна для снятия блокировки
-      btn.textContent = "🔒";
-      btn.classList.add("active");
-      if (spinning)  { btn.disabled = true; return; }
-      if (betLocked) { btn.disabled = true; return; }
-      btn.disabled = false;
-      return;
-    }
-
-    btn.textContent = "🔓";
-    if (spinning)                 { btn.disabled = true; return; }
-    if (betLocked)                { btn.disabled = true; return; }
-    if (locksLeft <= 0)           { btn.disabled = true; return; }
-    if (lockedCount >= MAX_LOCKS) { btn.disabled = true; return; }
-    if (balance < LOCK_COST) {
-      btn.disabled = true;
-      btn.classList.add("no-money");
-      return;
-    }
-    btn.disabled = false;
-  });
-
-  flipBtns.forEach(btn => {
-    const i = Number(btn.dataset.reel);
-    const r = reels[i];
-    if (spinning)       { btn.disabled = true; return; }
-    if (betLocked)      { btn.disabled = true; return; }
-    if (!r.domino)      { btn.disabled = true; return; }
-    btn.disabled = false;
-  });
-
   const canRecalc = !spinning && !betLocked && recalcAvailable;
   recalcBtn.disabled = !canRecalc;
   recalcBtn.classList.toggle("ready", canRecalc);
+
+  reelEls.forEach((el, i) => {
+    const canFlip = !spinning && !betLocked && !!reels[i].domino && !flippingReels[i];
+    el.classList.toggle("can-flip", canFlip);
+  });
 }
 
 function showResult(text, type = "info") {
@@ -782,67 +720,7 @@ function setBet(value) {
 }
 
 // ============================================
-// БЛОКИРОВКА / РАЗБЛОКИРОВКА БАРАБАНА
-// ============================================
-function toggleLock(index) {
-  if (spinning) return;
-  if (betLocked) {
-    showResult("⚠️ Ставка изменена — допы недоступны до следующего спина", "info");
-    Sound.error();
-    return;
-  }
-
-  // --- Снятие блокировки (бесплатно) ---
-  if (reels[index].locked) {
-    reels[index].locked = false;
-    reelEls[index].classList.remove("locked");
-
-    if (locksLeft < LOCKS_PER_ROUND) locksLeft++;
-
-    if (paidLockedPair && paidLockedPair.positions.includes(index)) {
-      paidLockedPair = null;
-    }
-
-    // При снятии блокировки «Пересчёт» блокируется
-    recalcAvailable = false;
-
-    Sound.click();
-    updateBonusUI();
-    showResult(`🔓 Барабан ${index + 1} разблокирован (бесплатно)`, "info");
-    return;
-  }
-
-  // --- Постановка блокировки ---
-  if (locksLeft <= 0) {
-    showResult("⚠️ Лимит блокировок исчерпан", "info");
-    Sound.error();
-    return;
-  }
-  if (balance < LOCK_COST) {
-    showResult("💸 Недостаточно кредитов", "lose");
-    Sound.error();
-    return;
-  }
-  const lockedCount = reels.filter(r => r.locked).length;
-  if (lockedCount >= MAX_LOCKS) {
-    showResult("⚠️ Нельзя блокировать больше 2 барабанов", "info");
-    Sound.error();
-    return;
-  }
-
-  balance -= LOCK_COST;
-  locksLeft--;
-  reels[index].locked = true;
-  reelEls[index].classList.add("locked");
-
-  Sound.lock();
-  updateBalanceUI();
-  updateBonusUI();
-  showResult(`🔒 Барабан ${index + 1} заблокирован (-${LOCK_COST} 💰)`, "info");
-}
-
-// ============================================
-// ПЕРЕВОРОТ КОСТЯШКИ
+// ПЕРЕВОРОТ КОСТЯШКИ ВОКРУГ ОСИ Z — однофазный 180°
 // ============================================
 function flipDomino(index) {
   if (spinning) return;
@@ -851,33 +729,76 @@ function flipDomino(index) {
     Sound.error();
     return;
   }
+  if (flippingReels[index]) return;
   if (!reels[index].domino) return;
 
   const d = reels[index].domino;
   const oldTop = d.top, oldBot = d.bot;
   [d.top, d.bot] = [d.bot, d.top];
 
-  if (paidLockedPair && paidLockedPair.positions.includes(index)) {
-    paidLockedPair = null;
+  const reelEl = reelEls[index];
+  const dominoEl = reelEl.querySelector(".domino");
+  if (!dominoEl) return;
+
+  flippingReels[index] = true;
+  Sound.flip();
+  updateBonusUI();
+
+  const HALF = Math.max(80, Math.floor(FLIP_ANIM_MS / 2));
+
+  let finished = false;
+  function finishFlip(fromTimer) {
+    if (finished) return;
+    finished = true;
+    clearTimeout(failSafe);
+
+    dominoEl.removeEventListener("transitionend", onPhase1);
+    dominoEl.removeEventListener("transitionend", onPhase2);
+
+    if (fromTimer && dominoEl.dataset.flipped !== "1") {
+      updateDominoContent(dominoEl, d);
+    }
+    dominoEl.dataset.flipped = "";
+
+    dominoEl.style.transition = "none";
+    dominoEl.style.transform = "rotateZ(0deg)";
+    void dominoEl.offsetWidth;
+    dominoEl.style.transition = "";
+    dominoEl.style.transform = "";
+
+    flippingReels[index] = false;
+    updateBonusUI();
   }
 
-  const reelEl = reelEls[index];
+  const failSafe = setTimeout(() => finishFlip(true), FLIP_ANIM_MS + 300);
 
-  Sound.flip();
-  reelEl.classList.add("flipping");
+  dominoEl.style.transition = "none";
+  dominoEl.style.transform = "rotateZ(0deg)";
+  void dominoEl.offsetWidth;
 
-  setTimeout(() => {
-    reelEl.classList.add("no-transition");
-    void reelEl.offsetWidth;
-    reelEl.classList.remove("flipping");
-    void reelEl.offsetWidth;
-    renderReel(index, d);
-    requestAnimationFrame(() => {
-      reelEl.classList.remove("no-transition");
-    });
-  }, FLIP_ANIM_MS);
+  dominoEl.style.transition = `transform ${HALF}ms linear`;
+  dominoEl.style.transform = "rotateZ(90deg)";
 
-  updateBonusUI();
+  dominoEl.addEventListener("transitionend", onPhase1);
+
+  function onPhase1(e) {
+    if (e.propertyName !== "transform") return;
+    dominoEl.removeEventListener("transitionend", onPhase1);
+
+    updateDominoContent(dominoEl, d);
+    dominoEl.dataset.flipped = "1";
+
+    dominoEl.style.transition = `transform ${HALF}ms linear`;
+    dominoEl.style.transform = "rotateZ(180deg)";
+
+    dominoEl.addEventListener("transitionend", onPhase2);
+  }
+
+  function onPhase2(e) {
+    if (e.propertyName !== "transform") return;
+    finishFlip(false);
+  }
+
   showResult(
     `🔄 [${oldTop}|${oldBot}] перевёрнута → [${d.top}|${d.bot}]`,
     "info"
@@ -887,109 +808,63 @@ function flipDomino(index) {
 // ============================================
 // ПОДСЧЁТ ВЫИГРЫША
 // ============================================
-function calculateWin(ds, bet, ctx = {}) {
-  const { hadLock = false } = ctx;
+function calculateWin(ds, bet) {
   const [a, b, c] = ds;
-  const id = (d) => `${d.top}-${d.bot}`;
 
-  // 1. Три разных дубля → x5
   if (isDouble(a) && isDouble(b) && isDouble(c)
       && a.top !== b.top && b.top !== c.top && a.top !== c.top) {
-    const signature = `DDD:${id(a)}|${id(b)}|${id(c)}`;
-    if (hadLock && paidLine === signature) {
-      return { win: 0, message: `💎 ТРИ РАЗНЫХ ДУБЛЯ — уже оплачено`, type: "info", highlight: [], signature, kind: null };
-    }
     return {
       win: bet * MULT_THREE_DIFFERENT_DOUBLES,
       message: `💎 ТРИ РАЗНЫХ ДУБЛЯ: [${a.top}|${a.bot}] [${b.top}|${b.bot}] [${c.top}|${c.bot}] → +${bet * MULT_THREE_DIFFERENT_DOUBLES} (x${MULT_THREE_DIFFERENT_DOUBLES})`,
       type: "win",
       highlight: [0, 1, 2],
-      signature,
       kind: "jackpot",
     };
   }
 
-  // 2. Дубль в центре → x4
   if (isDouble(b) && a.bot === b.top && b.bot === c.top) {
     const x = b.top;
-    const signature = `CD:${id(a)}|${id(b)}|${id(c)}`;
-    if (hadLock && paidLine === signature) {
-      return { win: 0, message: `🔷 ДУБЛЬ В ЦЕНТРЕ [${x}|${x}] — уже оплачено`, type: "info", highlight: [], signature, kind: null };
-    }
     return {
       win: bet * MULT_CENTER_DOUBLE,
       message: `🔷 ДУБЛЬ В ЦЕНТРЕ [${x}|${x}]: [${a.top}|${a.bot}] → [${b.top}|${b.bot}] → [${c.top}|${c.bot}] → +${bet * MULT_CENTER_DOUBLE} (x${MULT_CENTER_DOUBLE})`,
       type: "win",
       highlight: [0, 1, 2],
-      signature,
       kind: "center",
     };
   }
 
-  // 3. Дубли по краям → x4
   if (isDouble(a) && isDouble(c)
       && a.top !== c.top
       && b.top === a.top && b.bot === c.top) {
-    const signature = `ED:${id(a)}|${id(b)}|${id(c)}`;
-    if (hadLock && paidLine === signature) {
-      return { win: 0, message: `🔶 ДУБЛИ ПО КРАЯМ — уже оплачено`, type: "info", highlight: [], signature, kind: null };
-    }
     return {
       win: bet * MULT_EDGE_DOUBLES,
       message: `🔶 ДУБЛИ ПО КРАЯМ: [${a.top}|${a.bot}] → [${b.top}|${b.bot}] → [${c.top}|${c.bot}] → +${bet * MULT_EDGE_DOUBLES} (x${MULT_EDGE_DOUBLES})`,
       type: "win",
       highlight: [0, 1, 2],
-      signature,
       kind: "edges",
     };
   }
 
-  // 4. Линия из 3 → x3
   const joint1 = (a.bot === b.top);
   const joint2 = (b.bot === c.top);
   if (joint1 && joint2) {
-    const signature = `3:${id(a)}|${id(b)}|${id(c)}`;
-    if (hadLock && paidLine === signature) {
-      return { win: 0, message: `🎉 ЛИНИЯ ИЗ 3 — уже оплачено`, type: "info", highlight: [], signature, kind: null };
-    }
     return {
       win: bet * MULT_FULL_LINE,
       message: `🎉 ЛИНИЯ ИЗ 3: [${a.top}|${a.bot}] → [${b.top}|${b.bot}] → [${c.top}|${c.bot}] → +${bet * MULT_FULL_LINE} (x${MULT_FULL_LINE})`,
       type: "win",
       highlight: [0, 1, 2],
-      signature,
       kind: "line",
     };
   }
 
-  // 5. Линия из 2 → x2
   if (joint1 || joint2) {
-    let indices, text, signature;
+    let indices, text;
     if (joint1) {
       indices = [0, 1];
       text = `[${a.top}|${a.bot}] → [${b.top}|${b.bot}]`;
-      signature = `2L:${id(a)}|${id(b)}`;
     } else {
       indices = [1, 2];
       text = `[${b.top}|${b.bot}] → [${c.top}|${c.bot}]`;
-      signature = `2R:${id(b)}|${id(c)}`;
-    }
-
-    if (paidLockedPair && paidLockedPairStillValid()) {
-      if (paidLockedPair.signature === signature) {
-        return {
-          win: 0,
-          message: `✨ ЛИНИЯ ИЗ 2 — уже оплачено`,
-          type: "info",
-          highlight: [],
-          signature,
-          kind: null,
-        };
-      }
-    }
-
-    if (hadLock && paidLine === signature) {
-      return { win: 0, message: `✨ ЛИНИЯ ИЗ 2 — уже оплачено`, type: "info", highlight: [], signature, kind: null };
     }
 
     return {
@@ -997,18 +872,15 @@ function calculateWin(ds, bet, ctx = {}) {
       message: `✨ ЛИНИЯ ИЗ 2 (${text}) → +${bet * MULT_PAIR_LINE} монет (x${MULT_PAIR_LINE})`,
       type: "win",
       highlight: indices,
-      signature,
       kind: "pair",
     };
   }
 
-  // 6. Проигрыш
   return {
     win: 0,
     message: `😢 Не повезло... -${bet} монет`,
     type: "lose",
     highlight: [],
-    signature: null,
     kind: null,
   };
 }
@@ -1124,30 +996,10 @@ async function spin() {
       "win", "spinning", "settle", "dim", "neighbor"
     ));
 
-    const spinIndices = [];
-    for (let i = 0; i < 3; i++) {
-      if (!reels[i].locked) spinIndices.push(i);
-    }
-
-    if (spinIndices.length === 0) {
-      showResult("⚠️ Все барабаны заблокированы — спин пропущен", "info");
-      Sound.error();
-      return;
-    }
-
-    reelEls.forEach((el, i) => {
-      if (reels[i].locked) el.classList.add("neighbor");
-      else el.classList.add("dim");
-    });
-
-    const usedKeys = new Set();
-    reels.forEach(r => {
-      if (r.locked && r.domino) {
-        usedKeys.add(`${r.domino.top}-${r.domino.bot}`);
-      }
-    });
+    const spinIndices = [0, 1, 2];
 
     const finalDominoes = {};
+    const usedKeys = new Set();
     const pool = DOMINO_SET.filter(d => !usedKeys.has(`${d.top}-${d.bot}`));
     for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -1193,29 +1045,8 @@ async function spin() {
 
     await sleep(200);
 
-    const hadLock = reels.some(r => r.locked);
-    const lockedPair = getLockedAdjacentPair();
     const ds = reels.map(r => r.domino);
-    const outcome = calculateWin(ds, currentBet, { hadLock });
-
-    if (outcome.win > 0 && outcome.kind === "pair" && lockedPair) {
-      paidLockedPair = {
-        signature: outcome.signature,
-        positions: [...lockedPair],
-        dominoes: [
-          { ...reels[lockedPair[0]].domino },
-          { ...reels[lockedPair[1]].domino },
-        ],
-      };
-    }
-
-    if (paidLockedPair && !paidLockedPairStillValid()) {
-      paidLockedPair = null;
-    }
-
-    if (outcome.win > 0) {
-      paidLine = outcome.signature;
-    }
+    const outcome = calculateWin(ds, currentBet);
 
     applyHighlight(outcome);
 
@@ -1228,11 +1059,9 @@ async function spin() {
     currentSpinWin = outcome.win;
     updateBalanceUI();
 
-    // Блокировки НЕ снимаются после спина — они живут, пока игрок сам не снимет
-
     showResult(
       outcome.message +
-      `\n🎁 Допы доступны. Можно перевернуть костяшки и нажать «Пересчёт» один раз.`,
+      `\n🎁 Допы доступны. Кликните по костяшке для переворота и нажмите «Пересчёт» один раз.`,
       outcome.type
     );
 
@@ -1269,33 +1098,13 @@ function recalc() {
   }
 
   try {
-    const lockedPair = getLockedAdjacentPair();
-
     if (currentSpinWin > 0) {
       balance -= currentSpinWin;
       currentSpinWin = 0;
     }
 
-    let outcome;
-
-    if (lockedPair) {
-      outcome = {
-        win: 0,
-        message: `Бараны ${humanPair(lockedPair)} заблокированы, выигрыш не начислен`,
-        type: "info",
-        highlight: [],
-        signature: null,
-        kind: null,
-      };
-    } else {
-      const hadLock = reels.some(r => r.locked);
-      const ds = reels.map(r => r.domino);
-      outcome = calculateWin(ds, currentBet, { hadLock });
-
-      if (outcome.win > 0) {
-        paidLine = outcome.signature;
-      }
-    }
+    const ds = reels.map(r => r.domino);
+    const outcome = calculateWin(ds, currentBet);
 
     applyHighlight(outcome);
 
@@ -1329,24 +1138,21 @@ function restartGame() {
   balance      = START_BALANCE;
   currentBet   = DEFAULT_BET;
   spinning     = false;
-  locksLeft    = LOCKS_PER_ROUND;
-  paidLine     = null;
   betLocked    = false;
   recalcAvailable = false;
   currentSpinWin  = 0;
-  paidLockedPair  = null;
+  flippingReels   = [false, false, false];
 
   reels = [
-    { domino: null, locked: false },
-    { domino: null, locked: false },
-    { domino: null, locked: false },
+    { domino: null },
+    { domino: null },
+    { domino: null },
   ];
 
   reelEls.forEach(r => {
     r.innerHTML = "";
     r.classList.remove(
-      "win", "connected", "spinning", "locked", "settle",
-      "flipping", "no-transition",
+      "win", "connected", "spinning", "settle", "can-flip",
       "pair", "line", "jackpot", "center", "edges", "dim", "neighbor"
     );
   });
@@ -1370,12 +1176,11 @@ restartBtn.addEventListener("click", () => {
   restartGame();
 });
 
-lockBtns.forEach(btn => {
-  btn.addEventListener("click", () => toggleLock(Number(btn.dataset.reel)));
-});
-
-flipBtns.forEach(btn => {
-  btn.addEventListener("click", () => flipDomino(Number(btn.dataset.reel)));
+reelEls.forEach((el, i) => {
+  el.addEventListener("click", () => {
+    if (!el.classList.contains("can-flip")) return;
+    flipDomino(i);
+  });
 });
 
 quickBetBtns.forEach(btn => {
