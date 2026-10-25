@@ -21,6 +21,11 @@
       <span></span><span></span><span></span><span></span><span></span><span></span>
     </div>
 
+    <!-- Кнопка звука (внутри корпуса, правый верхний угол) -->
+    <div id="audioControls">
+      <button id="soundBtn" title="Звук: всё включено">🔊</button>
+    </div>
+
     <h1>🎲 СЛОТ-ДОМИНО 🎲</h1>
 
     <!-- 1. ИГРОВОЕ ПОЛЕ -->
@@ -38,7 +43,7 @@
       <span>🎯 Ставка: <b id="betDisplay">10</b></span>
     </div>
 
-    <!-- 3. РЯД УПРАВЛЕНИЯ: ПЕРЕСЧЁТ / ДОПЫ / КРУТИТЬ -->
+    <!-- 3. РЯД УПРАВЛЕНИЯ: ПЕРЕСЧЁТ / СТАВКИ / КРУТИТЬ -->
     <div class="game-row">
       <!-- Пересчёт -->
       <button class="recalc-btn" id="recalcBtn" title="Пересчитать выигрыш по текущим костяшкам">
@@ -46,38 +51,24 @@
         <span class="recalc-text">ПЕРЕСЧЁТ</span>
       </button>
 
-      <!-- Допы: блокировки + перевороты -->
-      <div class="bonus-block">
-        <div class="bonus-block-label">
-          🔒 <b id="locksLeft">2/2</b> <span class="cost">(5 💰)</span>
-        </div>
-        <div class="control-row locks">
-          <button class="lock-btn" data-reel="0" title="Заблокировать барабан 1">🔓</button>
-          <button class="lock-btn" data-reel="1" title="Заблокировать барабан 2">🔓</button>
-          <button class="lock-btn" data-reel="2" title="Заблокировать барабан 3">🔓</button>
-        </div>
-        <div class="control-row flips">
-          <button class="flip-btn" data-reel="0" title="Перевернуть костяшку">🔄</button>
-          <button class="flip-btn" data-reel="1" title="Перевернуть костяшку">🔄</button>
-          <button class="flip-btn" data-reel="2" title="Перевернуть костяшку">🔄</button>
-        </div>
+      <!-- Ставки -->
+      <div class="quick-bets">
+        <button data-bet="1">1</button>
+        <button data-bet="5">5</button>
+        <button data-bet="10">10</button>
+        <button data-bet="25">25</button>
+        <button data-bet="50">50</button>
+        <button data-bet="all">MAX</button>
       </div>
 
       <!-- Крутить -->
-      <button class="spin-btn" id="spinBtn">КРУТИТЬ</button>
+      <button class="spin-btn" id="spinBtn">
+        <span class="spin-icon">🎰</span>
+        <span class="spin-text">КРУТИТЬ</span>
+      </button>
     </div>
 
-    <!-- 4. КНОПКИ СТАВОК -->
-    <div class="quick-bets">
-      <button data-bet="1">1</button>
-      <button data-bet="5">5</button>
-      <button data-bet="10">10</button>
-      <button data-bet="25">25</button>
-      <button data-bet="50">50</button>
-      <button data-bet="all">MAX</button>
-    </div>
-
-    <!-- 5. ПАНЕЛЬ РЕЗУЛЬТАТА -->
+    <!-- 4. ПАНЕЛЬ РЕЗУЛЬТАТА -->
     <div class="result-panel" id="resultPanel">
       Нажмите «КРУТИТЬ», чтобы начать!
     </div>
@@ -89,14 +80,8 @@
       <b>🔶 Дубли по краям</b> ([z|z][z|y][y|y]) = <b>x4</b><br>
       <b>🎉 Линия из 3</b> (все стыкуются) = <b>x3</b><br>
       <b>✨ Линия из 2</b> (две стыкуются) = <b>x2</b><br>
-      <span class="hint">Костяшки в спине не повторяются: 3 разные из 28.</span>
+      <span class="hint">Костяшки в спине не повторяются: 3 разные из 28. Клик по костяшке — переворот.</span>
     </div>
-  </div>
-
-  <!-- Кнопки управления звуком -->
-  <div id="audioControls">
-    <button id="muteFxBtn" title="Звуковые эффекты">🔊</button>
-    <button id="muteMusicBtn" title="Фоновая музыка">🎵</button>
   </div>
 
   <div class="game-over" id="gameOver">
